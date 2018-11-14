@@ -1,71 +1,123 @@
 #include "dr_api.h"
+#include "drutil.h"
+#include "drreg.h"
+#include "drmgr.h"
+#include "../../../../usr/lib/DynamoRIO/include/dr_ir_utils.h"
 #include <vector>
-
-static void event_exit(void);
-static dr_emit_flags_t event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
-				bool for_trace, bool translating);
-static void clean_call(uint memref_count);
-static uint64 memref_total;
-static std::vector<uint64> memAddrs;
+#include <dr_ir_macros_aarch64.h>
 
 enum REF_TYPE {
-        READ = 0,
-        WRITE = 1
+    READ = 0,
+    WRITE = 1
 };
 
-/*typedef struct mem_ref_t {
-  	REF_TYPE ref_type;
-  	ushort size;
-  	ushort addr;
+typedef struct mem_ref_t {
+    REF_TYPE ref_type;
+    ushort size;
+    __u_long  addr;
 } mem_ref_t;
- */
 
-DR_EXPORT void dr_client_main(client_id_t id, int argc, const char *argv[]) {
-	/* register events */
-	dr_register_exit_event(event_exit);
-	dr_register_bb_event(event_basic_block);
-	//memref_total = 0;
-	 memAddrs = new std::vector<uint64>;
+static std::vector<mem_ref_t> *memRefs;
+
+
+static void createMemRef(uint read, uint64 size) {
+    void *drcontext = dr_get_current_drcontext();
+
+    mem_ref_t *m = new mem_ref_t;
+    //get address from spill slot
+    m->addr = dr_read_saved_reg(drcontext, SPILL_SLOT_1);
+    m->size = size;
+    m->ref_type = read ? READ : WRITE;
+    memRefs->push_back(*m);
 }
 
-static void event_exit(void) {
-	//dr_printf("%i", memref_total);
-	for(uint64 addr : memAddrs) {
-	    dr(printf("i", memAddrs));
-	}
+static void instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref, bool write) {
+    //reserve two scratch registers
+    reg_id_t reg_for_addr, reg_scratch;
+    if(drreg_reserve_register(drcontext, ilist, where, NULL, &reg_for_addr) != DRREG_SUCCESS
+       || drreg_reserve_register(drcontext, ilist, where, NULL, &reg_scratch) != DRREG_SUCCESS ) {
+        DR_ASSERT(false);
+        return;
+    }
+
+    //get size
+    uint size = drutil_opnd_mem_size_in_bytes(ref,where);
+    //get type
+    uint type = write ? 1 : 0;
+
+
+    //insert instruction to get address
+    drutil_insert_get_mem_addr(drcontext, ilist, where, ref, reg_for_addr, reg_scratch);
+
+    //insert instruction to save register in spill slot
+    dr_save_reg(drcontext, ilist, where, reg_for_addr, SPILL_SLOT_1);
+
+    //insert clean call
+    dr_insert_clean_call(drcontext, ilist, where, (void*) createMemRef, false, 2, OPND_CREATE_INT(type),
+                         OPND_CREATE_INT64(size));
+
+    //restore scrach registers
+    if(drreg_unreserve_register(drcontext, ilist, where, reg_for_addr) != DRREG_SUCCESS
+       || drreg_unreserve_register(drcontext, ilist, where, reg_scratch) != DRREG_SUCCESS ) {
+        DR_ASSERT(false);
+    }
 }
 
-static void createMemRef(uint64 memAddr) {
-    memAddrs.insert(memAddr);
+static dr_emit_flags_t event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb, bool for_trace, bool translating) {
+    if(!drutil_expand_rep_string(drcontext, bb)) {
+        DR_ASSERT(false);
+    }
+    return DR_EMIT_DEFAULT;
 }
 
-
-static dr_emit_flags_t event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
-                                         bool for_trace, bool translating) {
-    //uint num_memory = 0;
-    instr_t *instr;
-    //std::vector<mem_ref_t> memRefs = new std::vector<mem_ref_t>;
-
-    /* find all memory references in block */
-    for(instr = instrlist_first(bb); instr != NULL; instr = instr_get_next(instr)) {
+static dr_emit_flags_t event_app_instruction(void *drcontext, void *tag, instrlist_t *bb, instr_t *instr, bool for_trace,
+        bool translating, void *user_data) {
         if(instr_reads_memory(instr) || instr_writes_memory(instr)) {
-            for(i=0; i < instr_num_srcs(instr), i++) {
+            //for each source mem ref
+            for(int i=0; i < instr_num_srcs(instr); i++) {
                 if(opnd_is_memory_reference((instr_get_src(instr, i)))) {
-                    /* insert clean call */
-                    dr_insert_clean_call(drcontext, bb, instrlist_first(bb), createMemRef, false, 1,
-                                         OPND_CREATE_INT64(instr_get_src(instr, i)));
+                    instrument_mem(drcontext, bb, instr, instr_get_src(instr, i), false);
                 }
-            }for(i=0; i < instr_num_dsts(instr), i++) {
-                if (opnd_is_memory_reference((instr_get_dest(instr, i)))) {
-                    /* insert clean call */
-                    dr_insert_clean_call(drcontext, bb, instrlist_first(bb), createMemRef, false, 1,
-                                         OPND_CREATE_INT64(instr_get_dest(instr, i)));
+            }
+            //for each destination mem ref
+            for(int i=0; i < instr_num_dsts(instr); i++) {
+                if (opnd_is_memory_reference((instr_get_dst(instr, i)))) {
+                    instrument_mem(drcontext, bb, instr, instr_get_dst(instr, i), true);
                 }
             }
         }
-    }
-
-
-
     return DR_EMIT_DEFAULT;
+}
+
+static void event_exit(void) {
+    //TODO: get printing working
+    dr_printf("Finnished");
+    //dr_printf("%i", memref_total);
+    /*for(mem_ref_t m : *memRefs) {
+        dr_printf("Address: %s, Size: %i, Type: %i", m.addr, m.size, m.ref_type);
+    } */
+    if(!drmgr_unregister_bb_app2app_event(event_bb_app2app) ||
+        !drmgr_unregister_bb_insertion_event(event_app_instruction)) {
+        DR_ASSERT(false);
+    }
+    drutil_exit();
+    drmgr_exit();
+}
+
+DR_EXPORT void dr_client_main(client_id_t id, int argc, const char *argv[]) {
+    dr_printf("Starting");
+    drreg_options_t ops = {sizeof(ops), 3, false};
+	if(!drutil_init() || !drreg_init(&ops)) {
+	    DR_ASSERT(false);
+	}
+
+    /* register events */
+	dr_register_exit_event(event_exit);
+	if(!drmgr_register_bb_app2app_event(event_bb_app2app, NULL) ||
+	!drmgr_register_bb_instrumentation_event(NULL, event_app_instruction, NULL)) {
+	    DR_ASSERT(false);
+	}
+
+	//memref_total = 0;
+	 memRefs = new std::vector<mem_ref_t>;
 }
