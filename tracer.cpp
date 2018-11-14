@@ -2,7 +2,6 @@
 #include "drutil.h"
 #include "drreg.h"
 #include "drmgr.h"
-#include "../../../../usr/lib/DynamoRIO/include/dr_ir_utils.h"
 #include <vector>
 #include <dr_ir_macros_aarch64.h>
 
@@ -14,7 +13,7 @@ enum REF_TYPE {
 typedef struct mem_ref_t {
     REF_TYPE ref_type;
     ushort size;
-    __u_long  addr;
+    uint64 addr;
 } mem_ref_t;
 
 static std::vector<mem_ref_t> *memRefs;
@@ -90,16 +89,21 @@ static dr_emit_flags_t event_app_instruction(void *drcontext, void *tag, instrli
 }
 
 static void event_exit(void) {
-    //TODO: get printing working
-    dr_printf("Finnished");
     //dr_printf("%i", memref_total);
-    /*for(mem_ref_t m : *memRefs) {
-        dr_printf("Address: %s, Size: %i, Type: %i", m.addr, m.size, m.ref_type);
-    } */
+
+    int i = 0;
+    for(mem_ref_t m : *memRefs) {
+        if(i>100)
+            break;
+        i++;
+        dr_printf("Address: 0x%x, Size: %i, Type: %i ", m.addr, m.size, m.ref_type);
+    }
+    delete(memRefs);
     if(!drmgr_unregister_bb_app2app_event(event_bb_app2app) ||
         !drmgr_unregister_bb_insertion_event(event_app_instruction)) {
         DR_ASSERT(false);
     }
+    drreg_exit();
     drutil_exit();
     drmgr_exit();
 }
@@ -107,7 +111,10 @@ static void event_exit(void) {
 DR_EXPORT void dr_client_main(client_id_t id, int argc, const char *argv[]) {
     dr_printf("Starting");
     drreg_options_t ops = {sizeof(ops), 3, false};
-	if(!drutil_init() || !drreg_init(&ops)) {
+	if(!drutil_init()) {
+        DR_ASSERT(false);
+    }
+	if(drreg_init(&ops) != DRREG_SUCCESS) {
 	    DR_ASSERT(false);
 	}
 
