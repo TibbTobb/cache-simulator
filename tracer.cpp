@@ -63,6 +63,7 @@ static void instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, 
 }
 
 static dr_emit_flags_t event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb, bool for_trace, bool translating) {
+    //expand repeat string instructions
     if(!drutil_expand_rep_string(drcontext, bb)) {
         DR_ASSERT(false);
     }
