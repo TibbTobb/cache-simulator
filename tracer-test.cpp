@@ -1,7 +1,6 @@
 #include "dr_api.h"
 #include "drutil.h"
 #include "drreg.h"
-#include "../../../../usr/lib/DynamoRIO/include/dr_ir_utils.h"
 #include <vector>
 #include <dr_ir_macros_aarch64.h>
 
@@ -24,7 +23,7 @@ static void createMemRef(uint read, uint64 size) {
 
     mem_ref_t *m = new mem_ref_t;
     //get address from spill slot
-    m->addr = dr_read_saved_reg(drcontext, SPILL_SLOT_1);
+    m->addr = OPND_dr_read_saved_reg(drcontext, SPILL_SLOT_1);
     m->size = size;
     m->ref_type = read ? READ : WRITE;
     memRefs->push_back(*m);
