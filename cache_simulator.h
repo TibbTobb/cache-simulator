@@ -7,6 +7,9 @@
 
 
 class cache_simulator {
+public:
+    void create_cache();
+    void run();
 };
 
 

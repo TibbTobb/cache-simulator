@@ -3,13 +3,17 @@
 //
 
 #include "cache_simulator.h"
+#include "cache.h"
 
-void createCache() {
-    void run() {
-        //initilise cache
+void cache_simulator::create_cache() {
+}
 
-        //read mem refs from pipe
+void cache_simulator::run() {
+    //initilise cache
+    Cache *cache = new Cache();
+    cache->init(64, 640000);
 
-        //print miss numbers
-    }
+    //read mem refs from pipe
+
+    //print miss numbers
 }

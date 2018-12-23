@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 SET(DynamoRIO_DIR "/home/toby/dynamoRIO/cmake")
-add_library(myclient SHARED tracer.cpp cache_line.h cache_simulator.cpp cache_simulator.h cmake-build-debug/Cache.cpp cmake-build-debug/Cache.h Cache.cpp Cache.h)
+add_library(myclient SHARED tracer.cpp cache_line.h cache_simulator.cpp cache_simulator.h cmake-build-debug/Cache.cpp cmake-build-debug/Cache.h cache.cpp cache.h memref.h)
 find_package(DynamoRIO)
 if(NOT DynamoRIO_FOUND)
 	message(FATAL_ERROR "DynamoRIO package required to build")
