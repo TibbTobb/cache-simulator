@@ -1,19 +1,12 @@
 #include "dr_api.h"
 #include "drutil.h"
 #include "drreg.h"
+#include "drmgr.h"
 #include <vector>
 #include <dr_ir_macros_aarch64.h>
-
-enum REF_TYPE {
-    READ = 0,
-    WRITE = 1
-};
-
-typedef struct mem_ref_t {
-    REF_TYPE ref_type;
-    ushort size;
-    __u_long  addr;
-} mem_ref_t;
+#include <fstream>
+#include <iostream>
+#include "../common/memref.h"
 
 static std::vector<mem_ref_t> *memRefs;
 
@@ -23,7 +16,7 @@ static void createMemRef(uint read, uint64 size) {
 
     mem_ref_t *m = new mem_ref_t;
     //get address from spill slot
-    m->addr = OPND_dr_read_saved_reg(drcontext, SPILL_SLOT_1);
+    m->addr = dr_read_saved_reg(drcontext, SPILL_SLOT_1);
     m->size = size;
     m->ref_type = read ? READ : WRITE;
     memRefs->push_back(*m);
@@ -60,68 +53,75 @@ static void instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, 
         DR_ASSERT(false);
     }
 }
-/*
+
 static dr_emit_flags_t event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb, bool for_trace, bool translating) {
+    //expand repeat string instructions
     if(!drutil_expand_rep_string(drcontext, bb)) {
         DR_ASSERT(false);
     }
     return DR_EMIT_DEFAULT;
 }
-*/
-static dr_emit_flags_t event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
-                                         bool for_trace, bool translating) {
-    for(instr_t *instr = instrlist_first(bb); instr != NULL; instr = instr_get_next(instr)) {
-        if (instr_reads_memory(instr) || instr_writes_memory(instr)) {
+
+static dr_emit_flags_t event_app_instruction(void *drcontext, void *tag, instrlist_t *bb, instr_t *instr, bool for_trace,
+        bool translating, void *user_data) {
+        if(instr_reads_memory(instr) || instr_writes_memory(instr)) {
             //for each source mem ref
-            for (int i = 0; i < instr_num_srcs(instr); i++) {
-                if (opnd_is_memory_reference((instr_get_src(instr, i)))) {
+            for(int i=0; i < instr_num_srcs(instr); i++) {
+                if(opnd_is_memory_reference((instr_get_src(instr, i)))) {
                     instrument_mem(drcontext, bb, instr, instr_get_src(instr, i), false);
                 }
             }
             //for each destination mem ref
-            for (int i = 0; i < instr_num_dsts(instr); i++) {
+            for(int i=0; i < instr_num_dsts(instr); i++) {
                 if (opnd_is_memory_reference((instr_get_dst(instr, i)))) {
                     instrument_mem(drcontext, bb, instr, instr_get_dst(instr, i), true);
                 }
             }
         }
-    }
     return DR_EMIT_DEFAULT;
 }
 
 static void event_exit(void) {
-    //TODO: get printing working
-    dr_printf("Finnished");
     //dr_printf("%i", memref_total);
-    /*for(mem_ref_t m : *memRefs) {
-        dr_printf("Address: %s, Size: %i, Type: %i", m.addr, m.size, m.ref_type);
-    } */
-    /*
+
+    std::ofstream outfile;
+    outfile.open("memref_output.dat");
+
+    int i = 0;
+    for(mem_ref_t m : *memRefs) {
+        //dr_printf("Address: 0x%x, Size: %i, Type: %i ", m.addr, m.size, m.ref_type);
+        outfile << m.addr << " " << m.size << " " << m.ref_type << std::endl;
+        //cache1->request(m);
+    }
+    delete(memRefs);
+
+    outfile.close();
     if(!drmgr_unregister_bb_app2app_event(event_bb_app2app) ||
         !drmgr_unregister_bb_insertion_event(event_app_instruction)) {
         DR_ASSERT(false);
     }
-     */
-    //drutil_exit();
+    drreg_exit();
+    drutil_exit();
     drmgr_exit();
 }
 
 DR_EXPORT void dr_client_main(client_id_t id, int argc, const char *argv[]) {
     dr_printf("Starting");
     drreg_options_t ops = {sizeof(ops), 3, false};
-	if(!drutil_init() || !drreg_init(&ops)) {
+	if(!drutil_init()) {
+        DR_ASSERT(false);
+    }
+	if(drreg_init(&ops) != DRREG_SUCCESS) {
 	    DR_ASSERT(false);
 	}
 
     /* register events */
 	dr_register_exit_event(event_exit);
-    dr_register_bb_event(event_basic_block);
-	/*
 	if(!drmgr_register_bb_app2app_event(event_bb_app2app, NULL) ||
 	!drmgr_register_bb_instrumentation_event(NULL, event_app_instruction, NULL)) {
 	    DR_ASSERT(false);
 	}
-    */
+
 	//memref_total = 0;
 	 memRefs = new std::vector<mem_ref_t>;
 }

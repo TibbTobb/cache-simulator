@@ -5,9 +5,9 @@
 #ifndef PROJECT_CACHE_LINE_H
 #define PROJECT_CACHE_LINE_H
 
-#include <dr_defines.h>
+#include <cstdint>
 
-static const uint64 TAG_INVALID = (uint64)-1;
+static const uint64_t TAG_INVALID = (uint64_t) - 1;
 
 class cache_line {
 public:
@@ -15,7 +15,7 @@ public:
     :tag(TAG_INVALID)
     , counter(0)
     {}
-    uint64 tag;
+    uint64_t tag;
     //keeps track of how long since line was accessed
     int counter;
 };

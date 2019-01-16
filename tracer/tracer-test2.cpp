@@ -2,22 +2,14 @@
 #include "drutil.h"
 #include "drreg.h"
 #include "drmgr.h"
+#include "../simulator/cache.h"
 #include <vector>
 #include <dr_ir_macros_aarch64.h>
 
-enum REF_TYPE {
-    READ = 0,
-    WRITE = 1
-};
 
-typedef struct mem_ref_t {
-    REF_TYPE ref_type;
-    ushort size;
-    uint64 addr;
-} mem_ref_t;
 
-static std::vector<mem_ref_t> *memRefs;
-
+//static std::vector<mem_ref_t> *memRefs;
+cache *cache1;
 
 static void createMemRef(uint read, uint64 size) {
     void *drcontext = dr_get_current_drcontext();
@@ -27,7 +19,10 @@ static void createMemRef(uint read, uint64 size) {
     m->addr = dr_read_saved_reg(drcontext, SPILL_SLOT_1);
     m->size = size;
     m->ref_type = read ? READ : WRITE;
-    memRefs->push_back(*m);
+    dr_printf("Address: 0x%x, Size: %i, Type: %i ", m->addr, m->size, m->ref_type);
+    cache1->request(*m);
+    delete(m);
+    //memRefs->push_back(*m);
 }
 
 static void instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref, bool write) {
@@ -91,15 +86,19 @@ static dr_emit_flags_t event_app_instruction(void *drcontext, void *tag, instrli
 
 static void event_exit(void) {
     //dr_printf("%i", memref_total);
-
+    /*
     int i = 0;
     for(mem_ref_t m : *memRefs) {
-        if(i>100)
+        if(i>10000)
             break;
         i++;
-        dr_printf("Address: 0x%x, Size: %i, Type: %i ", m.addr, m.size, m.ref_type);
+        //dr_printf("Address: 0x%x, Size: %i, Type: %i ", m.addr, m.size, m.ref_type);
     }
+
     delete(memRefs);
+     */
+
+    dr_printf("Miss percentage: %d", cache1->get_miss_total()/(cache1->get_miss_total()+cache1->get_hit_total()));
     if(!drmgr_unregister_bb_app2app_event(event_bb_app2app) ||
         !drmgr_unregister_bb_insertion_event(event_app_instruction)) {
         DR_ASSERT(false);
@@ -110,6 +109,9 @@ static void event_exit(void) {
 }
 
 DR_EXPORT void dr_client_main(client_id_t id, int argc, const char *argv[]) {
+    cache1 = new cache();
+    cache1->init(64, 640000);
+
     dr_printf("Starting");
     drreg_options_t ops = {sizeof(ops), 3, false};
 	if(!drutil_init()) {
@@ -127,5 +129,5 @@ DR_EXPORT void dr_client_main(client_id_t id, int argc, const char *argv[]) {
 	}
 
 	//memref_total = 0;
-	 memRefs = new std::vector<mem_ref_t>;
+	 //memRefs = new std::vector<mem_ref_t>;
 }

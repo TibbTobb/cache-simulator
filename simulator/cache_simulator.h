@@ -6,6 +6,8 @@
 #define PROJECT_CACHE_SIMULATOR_H
 
 
+#include "cache.h"
+
 class cache_simulator {
 public:
     void create_cache();
