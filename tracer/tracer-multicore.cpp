@@ -2,34 +2,59 @@
 #include "drutil.h"
 #include "drreg.h"
 #include "drmgr.h"
-#include "../simulator/cache.h"
 #include <vector>
+#include <string>
 #include <dr_ir_macros_aarch64.h>
+#include <sstream>
 
 
+enum REF_TYPE {
+    READ = 0,
+    WRITE = 1
+};
 
-//static std::vector<mem_ref_t> *memRefs;
-cache *cache1;
+typedef struct mem_ref_t {
+    REF_TYPE ref_type;
+    ushort size;
+    uint64 addr;
+} mem_ref_t;
+
+typedef struct {
+    //byte *seg_base;
+    //mem_ref_t *buf_base;
+    file_t log;
+    FILE *logf;
+    //uint64 num_refs;
+} per_thread_t;
+
+static int tls_idx;
+
 
 static void createMemRef(uint read, uint64 size) {
+    //dr_printf("createMemRef\n");
+    //write mem_ref to per thread file
     void *drcontext = dr_get_current_drcontext();
 
-    mem_ref_t *m = new mem_ref_t;
-    //get address from spill slot
-    m->addr = dr_read_saved_reg(drcontext, SPILL_SLOT_1);
-    m->size = size;
-    m->ref_type = read ? READ : WRITE;
-    dr_printf("Address: 0x%x, Size: %i, Type: %i ", m->addr, m->size, m->ref_type);
-    cache1->request(*m);
-    delete(m);
-    //memRefs->push_back(*m);
+    //dr_printf("%i\n", tls_idx);
+
+    per_thread_t *data;
+    data = static_cast<per_thread_t *>(drmgr_get_tls_field(drcontext, tls_idx));
+    DR_ASSERT(data != nullptr);
+
+    reg_t addr = dr_read_saved_reg(drcontext, SPILL_SLOT_1);
+    FILE *file = data->logf;
+    DR_ASSERT(file != nullptr);
+
+    //dr_printf("writing to file\n");
+    fprintf(file, "%lu %lu %i\n",addr ,size, read);
+    //dr_printf("finnished writing\n");
 }
 
 static void instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref, bool write) {
     //reserve two scratch registers
     reg_id_t reg_for_addr, reg_scratch;
-    if(drreg_reserve_register(drcontext, ilist, where, NULL, &reg_for_addr) != DRREG_SUCCESS
-       || drreg_reserve_register(drcontext, ilist, where, NULL, &reg_scratch) != DRREG_SUCCESS ) {
+    if(drreg_reserve_register(drcontext, ilist, where, nullptr, &reg_for_addr) != DRREG_SUCCESS
+       || drreg_reserve_register(drcontext, ilist, where, nullptr, &reg_scratch) != DRREG_SUCCESS ) {
         DR_ASSERT(false);
         return;
     }
@@ -67,6 +92,7 @@ static dr_emit_flags_t event_bb_app2app(void *drcontext, void *tag, instrlist_t 
 
 static dr_emit_flags_t event_app_instruction(void *drcontext, void *tag, instrlist_t *bb, instr_t *instr, bool for_trace,
         bool translating, void *user_data) {
+        //dr_printf("trace instruction\n");
         if(instr_reads_memory(instr) || instr_writes_memory(instr)) {
             //for each source mem ref
             for(int i=0; i < instr_num_srcs(instr); i++) {
@@ -84,23 +110,12 @@ static dr_emit_flags_t event_app_instruction(void *drcontext, void *tag, instrli
     return DR_EMIT_DEFAULT;
 }
 
-static void event_exit(void) {
+static void event_exit() {
     //dr_printf("%i", memref_total);
-    /*
-    int i = 0;
-    for(mem_ref_t m : *memRefs) {
-        if(i>10000)
-            break;
-        i++;
-        //dr_printf("Address: 0x%x, Size: %i, Type: %i ", m.addr, m.size, m.ref_type);
-    }
 
-    delete(memRefs);
-     */
 
-    dr_printf("Miss percentage: %d", cache1->get_miss_total()/(cache1->get_miss_total()+cache1->get_hit_total()));
     if(!drmgr_unregister_bb_app2app_event(event_bb_app2app) ||
-        !drmgr_unregister_bb_insertion_event(event_app_instruction)) {
+       !drmgr_unregister_bb_insertion_event(event_app_instruction)) {
         DR_ASSERT(false);
     }
     drreg_exit();
@@ -108,11 +123,31 @@ static void event_exit(void) {
     drmgr_exit();
 }
 
-DR_EXPORT void dr_client_main(client_id_t id, int argc, const char *argv[]) {
-    cache1 = new cache();
-    cache1->init(64, 640000);
+static void event_thread_init(void *drcontext) {
+    //dr_printf("thread init\n");
+    //open file for thread to write to
+    per_thread_t *data = static_cast<per_thread_t *>(dr_thread_alloc(drcontext, sizeof(per_thread_t)));
+    DR_ASSERT(data != nullptr);
+    drmgr_set_tls_field(drcontext, tls_idx, data);
+    thread_id_t threadid = dr_get_thread_id(drcontext);
+    std::stringstream s;
+    s << "memref-output-" << threadid << ".dat";
+    const char *filename = s.str().c_str();
+    data->log = dr_open_file(filename, DR_FILE_WRITE_OVERWRITE);
+    data->logf = fdopen(data->log, "w");
+}
 
-    dr_printf("Starting");
+static void event_thread_exit(void *drcontext) {
+    //close per thread file
+    per_thread_t *data;
+    data = static_cast<per_thread_t *>(drmgr_get_tls_field(drcontext, tls_idx));
+    fclose(data->logf);
+    dr_thread_free(drcontext, data, sizeof(per_thread_t));
+}
+
+DR_EXPORT void dr_client_main(client_id_t id, int argc, const char *argv[]) {
+    //dr_printf("starting\n");
+    //get 3 reg slots
     drreg_options_t ops = {sizeof(ops), 3, false};
 	if(!drutil_init()) {
         DR_ASSERT(false);
@@ -123,11 +158,15 @@ DR_EXPORT void dr_client_main(client_id_t id, int argc, const char *argv[]) {
 
     /* register events */
 	dr_register_exit_event(event_exit);
-	if(!drmgr_register_bb_app2app_event(event_bb_app2app, NULL) ||
+	if(!drmgr_register_thread_init_event(event_thread_init) ||
+	!drmgr_register_thread_exit_event(event_thread_exit) ||
+	!drmgr_register_bb_app2app_event(event_bb_app2app, NULL) ||
 	!drmgr_register_bb_instrumentation_event(NULL, event_app_instruction, NULL)) {
 	    DR_ASSERT(false);
 	}
 
-	//memref_total = 0;
-	 //memRefs = new std::vector<mem_ref_t>;
+	//register tls slot to hold private thread data
+	tls_idx = drmgr_register_tls_field();
+	DR_ASSERT(tls_idx != -1);
+
 }

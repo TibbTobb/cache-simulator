@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 SET(DynamoRIO_DIR "/home/toby/dynamoRIO/cmake")
-add_library(myclient SHARED tracer-test.cpp ../common/memref.h)
+add_library(myclient SHARED tracer-multicore.cpp)
 find_package(DynamoRIO)
 if(NOT DynamoRIO_FOUND)
 	message(FATAL_ERROR "DynamoRIO package required to build")
