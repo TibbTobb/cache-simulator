@@ -18,4 +18,5 @@ typedef struct mem_ref_t {
     REF_TYPE ref_type;
     unsigned short size;
     uint64_t addr;
+    int tid;
 } mem_ref_t;

@@ -7,6 +7,10 @@
 
 #include <cstdint>
 
+enum COHERENCE_STATE {
+    I, S, E
+};
+
 static const uint64_t TAG_INVALID = (uint64_t) - 1;
 
 class cache_line {
@@ -18,6 +22,7 @@ public:
     uint64_t tag;
     //keeps track of how long since line was accessed
     int counter;
+    //COHERENCE_STATE coherence_state;
 };
 
 

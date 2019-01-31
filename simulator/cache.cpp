@@ -66,6 +66,14 @@ int cache::get_line_idx(int set_idx, int way) {
     return (set_idx << assoc_bits) + way;
 }
 
+//cache* cache::get_coherance_caches();
+
+/*
+void cache::set_line_coherance() {
+
+}
+*/
+
 void cache::request(const mem_ref_t &mem_ref_in) {
     uint64_t final_addr = mem_ref_in.addr + mem_ref_in.size-1;
     uint64_t final_tag = compute_tag(final_addr);
@@ -94,8 +102,12 @@ void cache::request(const mem_ref_t &mem_ref_in) {
         if(way == associativity) {
             //cache miss
             miss_total++;
-            int lru_line = get_lru(set_idx);
+
+            //TODO: check other caches
+            int lru_way = get_lru(set_idx);
+            int lru_line = get_line_idx(set_idx, lru_way);
             lines[lru_line]->tag = tag;
+            update_lru_counters(set_idx, lru_way);
             if(parent != nullptr) {
                 memref.addr = tag << line_size_bits;
                 parent->request(memref);
@@ -105,25 +117,32 @@ void cache::request(const mem_ref_t &mem_ref_in) {
 }
 
 int cache::get_lru(int set_idx) {
+    //find way of least recently used line
     int max = 0;
-    int oldest_line = 0;
+    int oldest_way = 0;
     for(int way = 0; way<associativity; ++way) {
         int line_idx = get_line_idx(set_idx, way);
+        if(lines[line_idx]->tag == TAG_INVALID) {
+            oldest_way = way;
+            break;
+        }
         int v = lines[line_idx]->counter;
         if(v >= max) {
-            oldest_line = line_idx;
+            oldest_way = way;
             max = v;
         }
     }
-    return oldest_line;
+    int line_idx = get_line_idx(set_idx, oldest_way);
+    lines[line_idx]->counter = 1;
+    return oldest_way;
 }
 
 void cache::update_lru_counters(int set_idx, int way) {
-    int line_idx = get_line_idx(set_idx, 0);
+    int line_idx = get_line_idx(set_idx, way);
     int count = lines[line_idx]->counter;
-    if(count==0)
+    //increment all lines with count less than or equal to accessed line
+    if(count == 0)
         return;
-    //increment all lines in set
     for(int i = 0; i<associativity; ++i) {
         line_idx = get_line_idx(set_idx, i);
         if(lines[line_idx]->counter <= count) {
@@ -131,7 +150,6 @@ void cache::update_lru_counters(int set_idx, int way) {
         }
     }
     //set accessed line to 0
-    line_idx = get_line_idx(set_idx, way);
     lines[line_idx]->counter = 0;
 }
 
