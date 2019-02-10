@@ -7,11 +7,23 @@
 
 
 #include "cache.h"
+#include "cache_config.h"
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <stdio.h>
+#include <string.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <vector>
+#include <map>
+#include <string>
 
 class cache_simulator {
 public:
-    void create_cache();
-    void run();
+    void run(bool online, std::string input_name, std::vector<cache_config> &cache_configs);
 };
 
 

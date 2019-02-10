@@ -7,20 +7,6 @@
 #include <vector>
 #include <cmath>
 
-int associativity;
-int num_lines;
-int line_size;
-int total_size;
-int line_size_bits;
-int set_index_bits;
-int assoc_bits;
-int num_sets;
-int hit_total;
-int miss_total;
-
-cache_line **lines;
-cache *parent;
-
 //set associative lru
 void cache::init(int associativity_, int line_size_, int total_size_){
     
@@ -50,6 +36,10 @@ void cache::init_lines() {
 
 void cache::set_parent(cache *parent_) {
     parent = parent_;
+}
+
+bool cache::has_parent() {
+    return parent == nullptr;
 }
 
 uint64_t cache::compute_tag(uint64_t addr) {
@@ -111,6 +101,7 @@ void cache::request(const mem_ref_t &mem_ref_in) {
             if(parent != nullptr) {
                 memref.addr = tag << line_size_bits;
                 parent->request(memref);
+                //TODO: if exclusive remove from child
             }
         }
     }
@@ -159,4 +150,12 @@ int cache::get_hit_total() {
 
 int cache::get_miss_total() {
     return miss_total;
+}
+
+bool cache::has_child() {
+    return !children.empty();
+}
+
+void cache::add_child(cache *child) {
+    children.push_back(child);
 }
