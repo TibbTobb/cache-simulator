@@ -4,6 +4,7 @@
 #include "drmgr.h"
 #include <vector>
 #include <dr_ir_macros_aarch64.h>
+#include <fstream>
 
 enum REF_TYPE {
     READ = 0,
@@ -17,17 +18,13 @@ typedef struct mem_ref_t {
 } mem_ref_t;
 
 static std::vector<mem_ref_t> *memRefs;
+std::ofstream outfile;
 
 
 static void createMemRef(uint read, uint64 size) {
     void *drcontext = dr_get_current_drcontext();
 
-    mem_ref_t *m = new mem_ref_t;
-    //get address from spill slot
-    m->addr = dr_read_saved_reg(drcontext, SPILL_SLOT_1);
-    m->size = size;
-    m->ref_type = read ? WRITE: READ;
-    memRefs->push_back(*m);
+    outfile << dr_read_saved_reg(drcontext, SPILL_SLOT_1) << " " << size << " " << (read ? WRITE: READ) << std::endl;
 }
 
 static void instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref, bool write) {
@@ -92,17 +89,17 @@ static dr_emit_flags_t event_app_instruction(void *drcontext, void *tag, instrli
 static void event_exit(void) {
     //dr_printf("%i", memref_total);
 
+
     int i = 0;
     for(mem_ref_t m : *memRefs) {
-        if(i>100)
-            break;
-        i++;
-        dr_printf("Address: 0x%x, Size: %i, Type: %i ", m.addr, m.size, m.ref_type);
+        //dr_printf("Address: 0x%x, Size: %i, Type: %i ", m.addr, m.size, m.ref_type);
 
     }
     delete(memRefs);
+
+    outfile.close();
     if(!drmgr_unregister_bb_app2app_event(event_bb_app2app) ||
-        !drmgr_unregister_bb_insertion_event(event_app_instruction)) {
+       !drmgr_unregister_bb_insertion_event(event_app_instruction)) {
         DR_ASSERT(false);
     }
     drreg_exit();
@@ -112,6 +109,9 @@ static void event_exit(void) {
 
 DR_EXPORT void dr_client_main(client_id_t id, int argc, const char *argv[]) {
     dr_printf("Starting");
+
+    outfile.open("memref_output.dat");
+
 
     drreg_options_t ops = {sizeof(ops), 3, false};
 	if(!drutil_init()) {

@@ -6,18 +6,13 @@
 #include <string>
 #include <dr_ir_macros_aarch64.h>
 #include <sstream>
-
-
-enum REF_TYPE {
-    READ = 0,
-    WRITE = 1
-};
-
-typedef struct mem_ref_t {
-    REF_TYPE ref_type;
-    ushort size;
-    uint64 addr;
-} mem_ref_t;
+#include <stdio.h>
+#include <string.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include "../common/memref.h"
 
 typedef struct {
     //byte *seg_base;
@@ -28,15 +23,16 @@ typedef struct {
 } per_thread_t;
 
 static int tls_idx;
+static bool online;
+static std::string pipe_name;
+static int fd;
 
+static void create_mem_ref(uint read, unsigned short size) {
+    //dr_printf("create_mem_ref\n");
 
-static void createMemRef(uint read, uint64 size) {
-    //dr_printf("createMemRef\n");
-    //write mem_ref to per thread file
     void *drcontext = dr_get_current_drcontext();
 
     //dr_printf("%i\n", tls_idx);
-
     per_thread_t *data;
     data = static_cast<per_thread_t *>(drmgr_get_tls_field(drcontext, tls_idx));
     DR_ASSERT(data != nullptr);
@@ -45,9 +41,19 @@ static void createMemRef(uint read, uint64 size) {
     FILE *file = data->logf;
     DR_ASSERT(file != nullptr);
 
-    //dr_printf("writing to file\n");
-    fprintf(file, "%lu %lu %i\n",addr ,size, read);
-    //dr_printf("finnished writing\n");
+    thread_id_t thread_id = dr_get_thread_id(drcontext);
+
+    if(online) {
+        mem_ref_t mem_ref = {read ? READ : WRITE, size, addr, thread_id};
+        //dr_printf("writing to pipe\n");
+        ::write(fd, &mem_ref, sizeof(mem_ref));
+        //dr_printf("finished writing\n");
+    } else {
+        //write mem_ref to per thread file
+        //dr_printf("writing to file\n");
+        fprintf(file, "%lu %hu %i %i\n", addr, size, read, thread_id);
+        //dr_printf("finished writing\n");
+    }
 }
 
 static void instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref, bool write) {
@@ -72,7 +78,7 @@ static void instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, 
     dr_save_reg(drcontext, ilist, where, reg_for_addr, SPILL_SLOT_1);
 
     //insert clean call
-    dr_insert_clean_call(drcontext, ilist, where, (void*) createMemRef, false, 2, OPND_CREATE_INT(type),
+    dr_insert_clean_call(drcontext, ilist, where, (void *) create_mem_ref, false, 2, OPND_CREATE_INT(type),
                          OPND_CREATE_INT64(size));
 
     //restore scrach registers
@@ -121,6 +127,8 @@ static void event_exit() {
     drreg_exit();
     drutil_exit();
     drmgr_exit();
+
+    close(fd);
 }
 
 static void event_thread_init(void *drcontext) {
@@ -146,7 +154,16 @@ static void event_thread_exit(void *drcontext) {
 }
 
 DR_EXPORT void dr_client_main(client_id_t id, int argc, const char *argv[]) {
-    //dr_printf("starting\n");
+    //TODO: read arg to determine if running online
+    online = true;
+    pipe_name = "cachesimpipe";
+
+    if(mkfifo(pipe_name.c_str(), 0666) != 0)
+        DR_ASSERT(false);
+    dr_printf("pipe opened\n");
+    fd = ::open(pipe_name.c_str(), O_WRONLY);
+
+    dr_printf("starting\n");
     //get 3 reg slots
     drreg_options_t ops = {sizeof(ops), 3, false};
 	if(!drutil_init()) {
@@ -160,8 +177,8 @@ DR_EXPORT void dr_client_main(client_id_t id, int argc, const char *argv[]) {
 	dr_register_exit_event(event_exit);
 	if(!drmgr_register_thread_init_event(event_thread_init) ||
 	!drmgr_register_thread_exit_event(event_thread_exit) ||
-	!drmgr_register_bb_app2app_event(event_bb_app2app, NULL) ||
-	!drmgr_register_bb_instrumentation_event(NULL, event_app_instruction, NULL)) {
+	!drmgr_register_bb_app2app_event(event_bb_app2app, nullptr) ||
+	!drmgr_register_bb_instrumentation_event(nullptr, event_app_instruction, nullptr)) {
 	    DR_ASSERT(false);
 	}
 
