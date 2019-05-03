@@ -24,6 +24,14 @@
 class cache_simulator {
 public:
     void run(bool online, std::string input_name, std::vector<cache_config> &cache_configs);
+    map<string, cache*> cache_map;
+    //todo: implement levels
+    cache** levels;
+protected:
+    bool online;
+    std::string input_name;
+    map<int, cache*> thread_map;
+    vector<cache*> cores;
 };
 
 
