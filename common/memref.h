@@ -11,7 +11,10 @@
 
 enum REF_TYPE {
     READ = 0,
-    WRITE = 1
+    WRITE = 1,
+    THREAD_INIT = 2,
+    THREAD_EXIT = 3,
+    SKIP = 4
 };
 
 typedef struct mem_ref_t {

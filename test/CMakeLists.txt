@@ -1,0 +1,4 @@
+cmake_minimum_required(VERSION 3.12)
+add_executable(burst_malloc burst_malloc.cpp)
+add_executable(burst_threads burst_threads.cpp)
+TARGET_LINK_LIBRARIES(burst_threads pthread)

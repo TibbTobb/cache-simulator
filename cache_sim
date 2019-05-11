@@ -1,0 +1,30 @@
+#!/bin/bash
+config=Config.txt
+input=cachesimpipe
+on=online
+target=
+simonly=false
+while getopts sft:c: option
+do
+case "${option}"
+in
+s) simonly=true
+   on=offline
+   input=memref-output.dat;;
+f) on=offline
+  input=memref-output.dat;;
+t) target=${OPTARG};;
+c) config=${OPTARG};;
+esac
+done
+
+if [ $simonly == "false" ]
+then
+    if [ $on == "online" ]
+    then
+        drrun -root /home/toby/dynamoRIO -c /home/toby/CLionProjects/cache-simulator/tracer/cmake-build-debug/libmyclient.so $on -- $target &
+    else
+        drrun -root /home/toby/dynamoRIO -c /home/toby/CLionProjects/cache-simulator/tracer/cmake-build-debug/libmyclient.so $on -- $target
+    fi
+fi
+/home/toby/CLionProjects/cache-simulator/simulator/cmake-build-debug/simulator -$on $config $input

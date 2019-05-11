@@ -19,13 +19,14 @@ public:
     :tag(TAG_INVALID)
     , counter(0)
     , coherence_state(COHERENCE_STATE::M)
-    , dirty(false)
+    //todo: determine if dirty needed
+    //, dirty(false)
     {}
     uint64_t tag;
     //keeps track of how long since line was accessed
     int counter;
     COHERENCE_STATE coherence_state;
-    bool dirty;
+    //bool dirty;
 };
 
 

@@ -12,9 +12,23 @@
 #include <vector>
 #include <algorithm>
 
-void read_config(std::vector<cache_config> &caches) {
+//allow use of K and M symbols for kilobytes and megabytes
+int convert_to_int(std::string string) {
+    char last = string.at(string.length() - 1);
+    if (last == 'K') {
+        std::string s = string.substr(0, string.length() - 1);
+        return 1024 * stoi(s);
+    }
+    if (last == 'M') {
+        return 1048576 * stoi(string.substr(0, string.length() - 1));
+    }
+    return stoi(string);
+
+}
+
+bool read_config(const std::string &config_file, std::vector<cache_config> &caches) {
     std::ifstream ifs;
-    ifs.open("/home/toby/CLionProjects/cache-simulator/simulator/Config.txt", std::ifstream::in);
+    ifs.open(config_file, std::ifstream::in);
     std::string str;
     bool start_cache = true;
     cache_config config = cache_config();
@@ -43,27 +57,56 @@ void read_config(std::vector<cache_config> &caches) {
 
                 if (firstWord == "ASSOCIATIVITY")
                     config.associativity = stoi(str.substr(str.find(' ') + 1, str.length()));
-                if (firstWord == "LINESIZE")
-                    config.line_size = stoi(str.substr(str.find(' ') + 1, str.length()));
-                if (firstWord == "TOTALSIZE")
-                    config.total_size = stoi(str.substr(str.find(' ') + 1, str.length()));
-                if (firstWord == "PARENT") {
+                else if (firstWord == "LINESIZE")
+                    config.line_size = convert_to_int(str.substr(str.find(' ') + 1, str.length()));
+                else if (firstWord == "TOTALSIZE")
+                    config.total_size = convert_to_int(str.substr(str.find(' ') + 1, str.length()));
+                else if (firstWord == "PARENT")
                     config.parent = str.substr(str.find(' ') + 1, str.length());
+                else if(firstWord == "INCLUSIVE")
+                    config.exclusivity = INCLUSIVE;
+                else if(firstWord == "EXCLUSIVE")
+                    config.exclusivity = EXCLUSIVE;
+                else if(firstWord == "NINE")
+                    config.exclusivity = NINE;
+                else if(firstWord == "REPLACEMENT") {
+                    config.replacement_policy = str.substr(str.find(' ') + 1, str.length());
                 }
-                if (firstWord == "END") {
+                else if (firstWord == "END") {
                     start_cache = true;
                     caches.push_back(config);
                     config = cache_config();
+                } else {
+                    std::cerr << "Invalid line in config: " << str << "\n";
+                    return false;
                 }
             }
         }
     }
+    return true;
 }
 
+
 int main(int argc, char *argv[]) {
+    bool online = false;
+    bool cache_coherence = false;
+    bool caculate_reuse_dist = false;
+    for(int i=1; i < argc-2; i++) {
+        if(std::string(argv[i]) == "-online") {
+            online = true;
+        } else if(std::string(argv[i]) == "-coherence") {
+            cache_coherence = true;
+        } else if(std::string(argv[i]) == "-reuse_dist") {
+            caculate_reuse_dist = true;
+        }
+    }
+
     std::vector<cache_config> caches;
-    read_config(caches);
-    cache_simulator *cache_simulator1 = new cache_simulator();
-    cache_simulator1->run(true,"/home/toby/CLionProjects/cache-simulator/tracer/cmake-build-debug/cachesimpipe", caches);
+    if(!read_config(argv[argc-2], caches)) {
+        return 1;
+    }
+    auto *cache_simulator1 = new cache_simulator();
+    //cache_simulator1->run(true,"/home/toby/CLionProjects/cache-simulator/tracer/cmake-build-debug/cachesimpipe", caches);
+    cache_simulator1->run(online, cache_coherence, caculate_reuse_dist, argv[argc-1], caches);
     return 0;
 }
