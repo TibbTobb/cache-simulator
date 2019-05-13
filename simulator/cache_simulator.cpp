@@ -60,13 +60,21 @@ void cache_simulator::run(bool online, bool use_coherence, bool caculate_reuse_d
         cache *c1 = cache_map_pair.second;
         for(const auto &cache_map_pair2 : cache_map) {
             cache *c2 = cache_map_pair2.second;
-            auto child_it = c2->children.find(c1);
-            if(child_it == c2->children.end()) {
-                //if c1 not a child of c2 then c2 not in parent of c1 and thus add to c1 coherence_set
-                c1->add_to_coherence_set(c2);
-            } else {
-                //otherwise c1 is a child of c2 and thus c2 is a parent of c1
-                c1->add_parent(c2);
+            if(c1 != c2) {
+                auto child_it = c2->children.find(c1);
+                auto parent_it = c1->children.find(c2);
+                if (child_it == c2->children.end() ) {
+                    if (parent_it == c1->children.end()) {
+                    //if c1 and c2 not children of each other then add to coherence set
+                    c1->add_to_coherence_set(c2);
+                    } else {
+                        //c1 not child of c2, and c2 child of c1
+
+                    }
+                } else {
+                    //otherwise c1 is a child of c2 and thus c2 is a parent of c1
+                    c1->add_parent(c2);
+                }
             }
         }
     }
@@ -148,14 +156,17 @@ void cache_simulator::run(bool online, bool use_coherence, bool caculate_reuse_d
         }
         infile.close();
     }
-
+    printf("\nSimulation statistics:");
     for(const auto &cache_map_pair : cache_map) {
         string name = cache_map_pair.first;
         cache* c = cache_map_pair.second;
         double average_reuse_dist = double(c->get_total_reuse_dist()) / double(c->get_hit_total());
         double miss_rate = double(c->get_miss_total()) / double((c->get_miss_total() + c->get_hit_total()));
-        printf("%s: Hit total: %i, Miss total: %i, Miss rate: %f, Reads: %i, Writes: %i, Average reuse dist: %f\n",
-               name.c_str(), c->get_hit_total(), c->get_miss_total(), miss_rate, c->reads, c->writes, average_reuse_dist);
+        printf("\n%s: Hit total: %i, Miss total: %i, Miss rate: %f%%, Reads: %i, Writes: %i, Average reuse dist: %f\n, "
+               "Coherence shares: %i, Coherence invalidates: %i, Coherence E to M: %i, Coherence M to S: %i",
+               name.c_str(), c->get_hit_total(), c->get_miss_total(), miss_rate*100, c->reads, c->writes,
+               average_reuse_dist, c->get_coherence_shares(), c->get_coherence_invalidates(), c->coherence_e_to_m,
+        c->coherence_m_to_s);
     }
     if(caculate_reuse_dist) {
         reuseDist.print_statistics();
@@ -171,7 +182,7 @@ void cache_simulator::process_memref(mem_ref_t m) {
     } else {
         auto thread_it = thread_map.find(m.tid);
         if(thread_it != thread_map.end()) {
-            thread_it->second->request(m);
+            thread_it->second->request(m, thread_it->second);
             if(caculate_reuse_dist) {
                 reuseDist.process_memref(m);
             }

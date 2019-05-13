@@ -13,10 +13,11 @@ s) simonly=true
    input=memref-output.dat;;
 f) on=offline
   input=memref-output.dat;;
-t) target=${OPTARG};;
-c) config=${OPTARG};;
+c) config=${OPTARG} shift;;
 esac
 done
+shift $((OPTIND-1))
+target=$*;
 
 if [ $simonly == "false" ]
 then

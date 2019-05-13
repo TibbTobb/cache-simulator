@@ -1,0 +1,92 @@
+#!/bin/bash
+apps=/home/toby/Documents/Project/parsec/parsec-2.1/pkgs/apps
+
+
+SHORT=s:fc:
+LONG=compare,size:,simonly,offline,config:,coherence
+OPTS=$(getopt --options $SHORT --long $LONG --name "$0" -- "$@")
+if [ $? != 0 ] ; then echo "Failed to parse options...exiting." >&2 ; exit 1 ; fi
+eval set -- "$OPTS"
+
+config=/home/toby/CLionProjects/cache-simulator/Config.txt
+on=online
+simonly=false
+size=simsmall
+compare=false
+coherence=
+siminput=cachesimpipe
+
+while true ; do
+  case "$1" in
+    --compare )
+      compare=true
+      shift
+      ;;
+    -s | --size )
+      size="$2"
+      shift 2
+      ;;
+    --simonly )
+      simonly=true
+      on=offline
+      siminput=memref-output.dat
+      shift
+      ;;
+    -f | --offline )
+       on=offline
+       siminput=memref-output.dat
+       shift
+       ;;
+     -c | --config )
+      config="$2"
+      shift 2
+      ;;
+      --coherence )
+      coherence=-coherence
+      shift
+      ;;
+      --)
+      shift
+      break
+      ;;
+      *)
+	echo "error"
+      exit 1
+      ;;
+  esac
+done
+
+echo $size
+target=$1
+shift
+args=$*
+
+fulltarget=$apps/$target/inst/amd64-linux.gcc.pre/bin/$target
+
+runtimefolder=$apps/$target/run
+
+benchinput=$apps/$target/inputs/input_$size.tar
+echo $benchinput
+
+cd $runtimefolder
+tar xf $benchinput
+if [ $compare == "true" ] 
+then
+	echo "running on DrCacheSim"
+	drrun -root /home/toby/dynamoRIO -t drcachesim -L0I_size 0 -L1D_size 32K -cores 2 -data_prefetcher none -- $fulltarget $args
+fi
+echo "running on simulator"
+if [ $simonly == "false" ]
+then
+    tracer="drrun -root /home/toby/dynamoRIO -c /home/toby/CLionProjects/cache-simulator/tracer/cmake-build-debug/libmyclient.so $on -- $fulltarget $args"
+    if [ $on == "online" ]
+    then
+	rm -f $siminput
+	echo running online
+         $tracer &
+    else
+        $tracer
+    fi
+fi
+sleep .5
+/home/toby/CLionProjects/cache-simulator/simulator/cmake-build-debug/simulator -$on $coherence $config $runtimefolder/$siminput

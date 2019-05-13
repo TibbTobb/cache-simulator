@@ -88,6 +88,7 @@ bool read_config(const std::string &config_file, std::vector<cache_config> &cach
 
 
 int main(int argc, char *argv[]) {
+    printf("Starting simulator\n");
     bool online = false;
     bool cache_coherence = false;
     bool caculate_reuse_dist = false;
