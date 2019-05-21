@@ -19,7 +19,6 @@ class lru : public replacement_policy {
             }
         }
         int line_idx = c->get_line_idx(set_idx, oldest_way);
-        c->lines[line_idx]->counter = 1;
         return oldest_way;
     }
 
@@ -27,12 +26,11 @@ class lru : public replacement_policy {
         int line_idx = c->get_line_idx(set_idx, way);
         int count = c->lines[line_idx]->counter;
         //increment all lines with count less than or equal to accessed line
-        if(count == 0)
-            return;
         for(int i = 0; i<c->get_associativity(); ++i) {
-            line_idx = c->get_line_idx(set_idx, i);
-            if(c->lines[line_idx]->counter <= count) {
-                c->lines[line_idx]->counter++;
+            int l = c->get_line_idx(set_idx, i);
+            //if(i != way && c->lines[l]->counter <= count) {
+            if(i != way) {
+                c->lines[l]->counter++;
             }
         }
         //set accessed line to 0

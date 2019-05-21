@@ -1,7 +1,3 @@
-//
-// Created by toby on 08/05/19.
-//
-
 #ifndef PROJECT_REPLACEMENT_POLICY_H
 #define PROJECT_REPLACEMENT_POLICY_H
 

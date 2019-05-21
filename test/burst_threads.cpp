@@ -7,7 +7,7 @@
 #include <ucontext.h>
 #include <pthread.h>
 
-static const int num_threads = 4;
+static const int num_threads = 2;
 static const int burst_owner = 0;
 static bool finished[num_threads];
 static int not_finnished = num_threads;

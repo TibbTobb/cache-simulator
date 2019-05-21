@@ -1,7 +1,3 @@
-//
-// Created by toby on 18/12/18.
-//
-
 #ifndef PROJECT_MEMREF_H
 #define PROJECT_MEMREF_H
 

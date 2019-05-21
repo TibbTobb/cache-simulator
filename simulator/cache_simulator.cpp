@@ -1,31 +1,23 @@
-//
-// Created by toby on 21/11/18.
-
 #include "cache_simulator.h"
 #include "replacement_policy.h"
 #include "lru.cpp"
-/*
-#include "drCacheSim_reader/trace_entry.h"
-#include "drCacheSim_reader/drCacheSim_reader.cpp"
-*/
+
 using namespace std;
 
-void cache_simulator::run(bool online, bool use_coherence, bool caculate_reuse_dist_,
+void cache_simulator::run(bool raw, bool output, const string &output_file, bool online, bool use_coherence,
         string input_name, vector<cache_config> &cache_configs) {
     //initialise
-    //translate_from_dr_cache_sim = false;
-
+    if(!raw)
+        printf("Starting simulator\n");
     //todo: use different replacement policy
     replacement_policy *lru1 = new lru();
     replacement_policy *other = new lru();
-
-    caculate_reuse_dist = caculate_reuse_dist_;
 
     //create a cache for each cache in config
     for(const cache_config &config : cache_configs) {
         auto *c = new cache();
         //default option lru
-        replacement_policy *replacementPolicy = lru1;
+        replacement_policy *replacementPolicy;
         if(config.replacement_policy == "LRU") {
             replacementPolicy = lru1;
         } else if(config.replacement_policy == "NEED_to_create") {
@@ -71,9 +63,6 @@ void cache_simulator::run(bool online, bool use_coherence, bool caculate_reuse_d
                         //c1 not child of c2, and c2 child of c1
 
                     }
-                } else {
-                    //otherwise c1 is a child of c2 and thus c2 is a parent of c1
-                    c1->add_parent(c2);
                 }
             }
         }
@@ -85,6 +74,7 @@ void cache_simulator::run(bool online, bool use_coherence, bool caculate_reuse_d
         if(!cache_map_pair.second->has_child()) {
             cores.push_back(cache_map_pair.second);
             cache_map_pair.second->core_num = i;
+            cache_map_pair.second->processor_cache = true;
             i++;
         }
     }
@@ -95,7 +85,6 @@ void cache_simulator::run(bool online, bool use_coherence, bool caculate_reuse_d
     for(int i=0; i<num_cores; i++) {
         cores_thread_counts[i] = 0;
     }
-
     if (online) {
         //read mem refs from pipe
         int fd;
@@ -103,26 +92,9 @@ void cache_simulator::run(bool online, bool use_coherence, bool caculate_reuse_d
         mem_ref_t m;
         //read until EOF
         int i = 0;
-
-        //if(translate_from_dr_cache_sim) {
-            /*
-            drCacheSim_reader reader;
-            trace_entry_t t;
-            while(0 < read(fd, &t, sizeof(trace_entry_t))) {
-                m = reader.read(t);
-                if(m.ref_type != SKIP) {
-                    process_memref(m);
-                }
-                close(fd);
-            }
-             */
-        //} else {
             while (0 < read(fd, &m, sizeof(mem_ref_t))) {
-                //TODO: remove this after testing
-                //if(i>10000000) break;
-                //i++;
+
                 process_memref(m);
-                //printf("Address: 0x%lu, Size: %i, Type: %i TID: %i\n", m.addr, m.size, m.ref_type, m.tid);
             }
             //close files
             close(fd);
@@ -135,10 +107,6 @@ void cache_simulator::run(bool online, bool use_coherence, bool caculate_reuse_d
         infile.open(input_name);
         int i = 0;
         while (getline(infile, line)) {
-            //TODO: remove this after testing
-            //if(i>10000000) break;
-            //i++;
-            //cout << line << '\n';
             istringstream iss(line);
             uint64_t addr;
             uint read;
@@ -152,25 +120,58 @@ void cache_simulator::run(bool online, bool use_coherence, bool caculate_reuse_d
 
             mem_ref_t m = {REF_TYPE(read), size, addr, tid};
             process_memref(m);
-            //printf("Address: 0x%lu, Size: %i, Type: %i \n", m.addr, m.size, m.ref_type);
         }
         infile.close();
     }
-    printf("\nSimulation statistics:");
+    std::ofstream ofs;
+    if(output) {
+        ofs.open(output_file, ostream::out);
+        ofs << "Hit total, Miss total, Reads, Writes, Average reuse dist";
+        if(use_coherence) {
+            printf("Coherence shares, Coherence invalidates, Coherence E to M, Coherence M to S");
+        }
+        ofs << std::endl;
+    }
+    if(!raw) {
+        printf("\nSimulation statistics:\n");
+    }
     for(const auto &cache_map_pair : cache_map) {
         string name = cache_map_pair.first;
         cache* c = cache_map_pair.second;
         double average_reuse_dist = double(c->get_total_reuse_dist()) / double(c->get_hit_total());
         double miss_rate = double(c->get_miss_total()) / double((c->get_miss_total() + c->get_hit_total()));
-        printf("\n%s: Hit total: %i, Miss total: %i, Miss rate: %f%%, Reads: %i, Writes: %i, Average reuse dist: %f\n, "
-               "Coherence shares: %i, Coherence invalidates: %i, Coherence E to M: %i, Coherence M to S: %i",
-               name.c_str(), c->get_hit_total(), c->get_miss_total(), miss_rate*100, c->reads, c->writes,
-               average_reuse_dist, c->get_coherence_shares(), c->get_coherence_invalidates(), c->coherence_e_to_m,
-        c->coherence_m_to_s);
+        if(raw) {
+            std::cout << name.c_str() << " " << c->get_hit_total() << " " <<c->get_miss_total() << " " <<
+                     c->reads << " " << c->writes << " " << average_reuse_dist;
+            if(use_coherence) {
+                std::cout << " " << c->get_coherence_shares() << " " << c->get_coherence_invalidates() << " " <<
+                    c->coherence_e_to_m << " " << c->coherence_m_to_s;
+            }
+            std::cout << std::endl;
+        } else {
+            printf("\n%s: Hit total: %i, Miss total: %i, Miss rate: %f%%, Reads: %i, Writes: %i, Average reuse dist: %f\n, ",
+                   name.c_str(), c->get_hit_total(), c->get_miss_total(), miss_rate * 100, c->reads, c->writes,
+                   average_reuse_dist);
+            if (use_coherence) {
+                printf("Coherence shares: %i, Coherence invalidates: %i, Coherence E to M: %i, Coherence M to S: %i\n",
+                       c->get_coherence_shares(), c->get_coherence_invalidates(), c->coherence_e_to_m,
+                       c->coherence_m_to_s);
+            }
+        }
+        if(output) {
+            ofs << name.c_str() << " " << c->get_hit_total() << " " <<c->get_miss_total() << " " <<
+            c->reads << " " << c->writes << " " << average_reuse_dist;
+            if(use_coherence) {
+                ofs << c->get_coherence_shares() << " " << c->get_coherence_invalidates() << " " <<
+                c->coherence_e_to_m << " " << c->coherence_m_to_s;
+            }
+            ofs << std::endl;
+        }
     }
-    if(caculate_reuse_dist) {
-        reuseDist.print_statistics();
+    if(output) {
+        ofs.close();
     }
+
 }
 
 void cache_simulator::process_memref(mem_ref_t m) {
@@ -182,10 +183,7 @@ void cache_simulator::process_memref(mem_ref_t m) {
     } else {
         auto thread_it = thread_map.find(m.tid);
         if(thread_it != thread_map.end()) {
-            thread_it->second->request(m, thread_it->second);
-            if(caculate_reuse_dist) {
-                reuseDist.process_memref(m);
-            }
+            thread_it->second->request(m);
         } else {
             cerr << "error thread not initialised\n";
         }

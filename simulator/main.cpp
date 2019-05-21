@@ -1,7 +1,3 @@
-//
-// Created by toby on 05/01/19.
-//
-
 #include "cache_simulator.h"
 
 #include <iostream>
@@ -88,26 +84,30 @@ bool read_config(const std::string &config_file, std::vector<cache_config> &cach
 
 
 int main(int argc, char *argv[]) {
-    printf("Starting simulator\n");
     bool online = false;
     bool cache_coherence = false;
-    bool caculate_reuse_dist = false;
+    bool output = false;
+    bool raw = false;
     for(int i=1; i < argc-2; i++) {
         if(std::string(argv[i]) == "-online") {
             online = true;
         } else if(std::string(argv[i]) == "-coherence") {
             cache_coherence = true;
-        } else if(std::string(argv[i]) == "-reuse_dist") {
-            caculate_reuse_dist = true;
+        } else if(std::string(argv[i]) == "-output") {
+            output = true;
+        } else if(std::string(argv[i]) == "-raw") {
+            raw = true;
         }
     }
-
+    std::string output_file_name;
+    if(output) {
+        output_file_name = argv[argc-3];
+    }
     std::vector<cache_config> caches;
     if(!read_config(argv[argc-2], caches)) {
         return 1;
     }
     auto *cache_simulator1 = new cache_simulator();
-    //cache_simulator1->run(true,"/home/toby/CLionProjects/cache-simulator/tracer/cmake-build-debug/cachesimpipe", caches);
-    cache_simulator1->run(online, cache_coherence, caculate_reuse_dist, argv[argc-1], caches);
+    cache_simulator1->run(raw, output, output_file_name, online,  cache_coherence, argv[argc-1], caches);
     return 0;
 }

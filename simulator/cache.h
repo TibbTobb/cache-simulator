@@ -1,7 +1,3 @@
-//
-// Created by toby on 21/11/18.
-//
-
 #ifndef PROJECT_CACHE_H
 #define PROJECT_CACHE_H
 
@@ -20,10 +16,9 @@ public:
     void add_to_coherence_set(cache *c);
     void set_parent(cache *parent_);
     bool has_parent();
-    void add_parent(cache *c);
     void add_child(cache* child);
     bool has_child();
-    bool request(const mem_ref_t &mem_ref_in, cache *level0);
+    void request(const mem_ref_t &mem_ref_in);
     bool processor_cache;
     int get_hit_total();
     int get_miss_total();
@@ -32,7 +27,6 @@ public:
     void invalidate(uint64_t tag);
     uint64_t get_total_reuse_dist();
     std::unordered_set<cache*> children;
-    std::vector<cache*> parents;
     int core_num;
     int reads;
     int writes;
@@ -49,8 +43,7 @@ protected:
     void init_lines();
     uint64_t compute_tag(uint64_t addr);
     void replace_line(uint64_t tag, COHERENCE_STATE coherence_state);
-    //cache[] *get_coherent_caches();
-    bool coherence_request(mem_ref_t mem_ref_in, bool parent);
+    bool coherence_request(mem_ref_t mem_ref_in);
     cache *parent;
     int associativity;
     int num_lines;

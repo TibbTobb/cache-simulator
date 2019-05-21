@@ -1,6 +1,8 @@
 #!/bin/bash
 config=Config.txt
 input=cachesimpipe
+out_file=sim-output.dat
+output=-output
 on=online
 target=
 simonly=false
@@ -28,4 +30,5 @@ then
         drrun -root /home/toby/dynamoRIO -c /home/toby/CLionProjects/cache-simulator/tracer/cmake-build-debug/libmyclient.so $on -- $target
     fi
 fi
-/home/toby/CLionProjects/cache-simulator/simulator/cmake-build-debug/simulator -$on $config $input
+sleep .5
+/home/toby/CLionProjects/cache-simulator/simulator/cmake-build-debug/simulator -$on $out $out_file $config $input

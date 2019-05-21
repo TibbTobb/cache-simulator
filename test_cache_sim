@@ -3,18 +3,25 @@ apps=/home/toby/Documents/Project/parsec/parsec-2.1/pkgs/apps
 
 
 SHORT=s:fc:
-LONG=compare,size:,simonly,offline,config:,coherence
+LONG=compare,size:,simonly,offline,config:,coherence,l1size:,l2size:,cores:,l1assoc:,l2assoc:,output:
 OPTS=$(getopt --options $SHORT --long $LONG --name "$0" -- "$@")
 if [ $? != 0 ] ; then echo "Failed to parse options...exiting." >&2 ; exit 1 ; fi
 eval set -- "$OPTS"
 
 config=/home/toby/CLionProjects/cache-simulator/Config.txt
 on=online
+output=
+outputFile=
 simonly=false
 size=simsmall
 compare=false
 coherence=
 siminput=cachesimpipe
+l1size=8K
+l2size=8M
+cores=2
+l1assoc=8
+l2assoc=16
 
 while true ; do
   case "$1" in
@@ -45,6 +52,35 @@ while true ; do
       coherence=-coherence
       shift
       ;;
+    --l2size )
+      l2size="$2"
+      shift 2
+      ;;
+    --l1size )
+      l1size="$2"
+      shift 2
+      ;;
+    --cores )
+      cores="$2"
+      shift 2
+      ;;
+    --l1assoc )
+      l1assoc="$2"
+      shift 2
+      ;;
+    --l2assoc )
+      l2assoc="$2"
+      shift 2
+      ;;
+      --)
+      shift
+      break
+      ;;
+--output )
+      outputFile="$2"
+      output=-output
+      shift 2
+      ;;
       --)
       shift
       break
@@ -73,7 +109,7 @@ tar xf $benchinput
 if [ $compare == "true" ] 
 then
 	echo "running on DrCacheSim"
-	drrun -root /home/toby/dynamoRIO -t drcachesim -L0I_size 0 -L1D_size 32K -cores 2 -data_prefetcher none -- $fulltarget $args
+	drrun -root /home/toby/dynamoRIO -t drcachesim -L0I_size 0 -L1D_size $l1size -LL_size $l2size -L1D_assoc $l1assoc -LL_assoc $l2assoc -cores $cores -data_prefetcher none -- $fulltarget $args
 fi
 echo "running on simulator"
 if [ $simonly == "false" ]
@@ -89,4 +125,4 @@ then
     fi
 fi
 sleep .5
-/home/toby/CLionProjects/cache-simulator/simulator/cmake-build-debug/simulator -$on $coherence $config $runtimefolder/$siminput
+/home/toby/CLionProjects/cache-simulator/simulator/cmake-build-debug/simulator -$on $coherence $output $outputFile $config $runtimefolder/$siminput

@@ -7,8 +7,8 @@ static int
 do_some_work(int arg)
 {
     static const int iters = 100000;
-    double *val = new double; // libc malloc is called inside new
-    double **vals = (double **)calloc(iters, sizeof(double *));
+    auto *val = new double; // libc malloc is called inside new
+    auto **vals = (double **)calloc(iters, sizeof(double *));
     *val = arg;
 
     for (int i = 0; i < iters; ++i) {

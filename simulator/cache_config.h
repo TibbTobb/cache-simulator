@@ -1,7 +1,3 @@
-//
-// Created by toby on 06/02/19.
-//
-
 #ifndef PROJECT_CACHE_CONFIG_H
 #define PROJECT_CACHE_CONFIG_H
 

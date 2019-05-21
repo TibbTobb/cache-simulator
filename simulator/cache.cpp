@@ -1,13 +1,8 @@
-//
-// Created by toby on 21/11/18.
-//
 #include "cache.h"
 #include "cache_line.h"
 #include "cache_simulator.h"
 #include <vector>
 #include <cmath>
-
-//set associative lru
 void cache::init(bool use_coherence_, int associativity_, int line_size_, int total_size_,
         bool inclusive_, bool exclusive_, replacement_policy *replacementPolicy_){
     use_coherence = use_coherence_;
@@ -20,6 +15,7 @@ void cache::init(bool use_coherence_, int associativity_, int line_size_, int to
 
     //encodes not processor cache
     core_num = -1;
+    processor_cache = false;
 
     num_lines = total_size / line_size;
 
@@ -71,7 +67,7 @@ int cache::get_line_idx(int set_idx, int way) {
     return (set_idx << assoc_bits) + way;
 }
 
-bool cache::coherence_request(mem_ref_t mem_ref_in, bool parent) {
+bool cache::coherence_request(mem_ref_t mem_ref_in) {
     //uses mem_ref_t as line size may be different
     uint64_t final_addr = mem_ref_in.addr + mem_ref_in.size - 1;
     uint64_t final_tag = compute_tag(final_addr);
@@ -85,39 +81,32 @@ bool cache::coherence_request(mem_ref_t mem_ref_in, bool parent) {
         for (way = 0; way < associativity; ++way) {
             int line_idx = get_line_idx(set_idx, way);
             if (lines[line_idx]->tag == tag) {
-                //cache hit
-                shared = true;
-                if(parent) {
-                    //do not invalidate lines in parents
-                    if(mem_ref_in.ref_type == WRITE) {
-                        //update lines in parents to M on write
-                        lines[line_idx]->coherence_state = COHERENCE_STATE::M;
-                    }
-                } else {//not parent
+                //hit
                     if(mem_ref_in.ref_type == WRITE) {
                         invalidate(tag);
                         coherence_invalidates++;
                     } else {
-                        if(lines[line_idx]->coherence_state == COHERENCE_STATE::M) {
-                            coherence_m_to_s++;
+                        if(processor_cache) {
+                            if (lines[line_idx]->coherence_state == COHERENCE_STATE::M) {
+                                coherence_m_to_s++;
+                            }
+                            lines[line_idx]->coherence_state = COHERENCE_STATE::S;
                         }
-                        lines[line_idx]->coherence_state = COHERENCE_STATE::S;
                         coherence_shares++;
                     }
+                    shared = true;
                 }
             }
         }
-    }
     return shared;
-}
+    }
 
 uint64_t cache::get_total_reuse_dist() {
     return total_reuse_dist;
 }
 
 
-bool cache::request(const mem_ref_t &mem_ref_in, cache* level0) {
-    bool shared = false;
+void cache::request(const mem_ref_t &mem_ref_in) {
 
     uint64_t final_addr = mem_ref_in.addr + mem_ref_in.size - 1;
     uint64_t final_tag = compute_tag(final_addr);
@@ -131,7 +120,6 @@ bool cache::request(const mem_ref_t &mem_ref_in, cache* level0) {
     int count = 0;
     for (; tag <= final_tag; ++tag) {
         count++;
-        //memref.addr = tag << line_size_bits;
         if (tag + 1 <= final_tag)
             memref.size = ((tag + 1) << line_size_bits) - memref.addr;
         set_idx = get_set_idx(tag);
@@ -147,8 +135,7 @@ bool cache::request(const mem_ref_t &mem_ref_in, cache* level0) {
                 } else {
                     replacementPolicy->update(this, set_idx, way);
                 }
-                if (use_coherence) {
-                    shared = lines[line_idx]->coherence_state == COHERENCE_STATE::S;
+                if (use_coherence && processor_cache) {
                     if (memref.ref_type == WRITE) {
                         if(lines[line_idx]->coherence_state == COHERENCE_STATE::E) {
                             coherence_e_to_m++;
@@ -156,12 +143,8 @@ bool cache::request(const mem_ref_t &mem_ref_in, cache* level0) {
                         lines[line_idx]->coherence_state = COHERENCE_STATE::M;
                         //if a write and other caches may have a copy (shared state), run coherence protocol
                         //send coherence request to all non parents
-                        for (cache *c : level0->coherence_set) {
-                            c->coherence_request(memref, false);
-                        }
-                        //when we hit we may need to update parents to modified
-                        for (cache *c : parents) {
-                            c->coherence_request(memref, true);
+                        for (cache *c : coherence_set) {
+                            c->coherence_request(memref);
                         }
                     }
                 }
@@ -172,19 +155,16 @@ bool cache::request(const mem_ref_t &mem_ref_in, cache* level0) {
             //cache miss
             miss_total++;
 
-            if (has_parent()) {
-                shared = parent->request(memref, level0);
-            } else {
-                //top level cache so run coherence
-                if (use_coherence) {
-                    for (cache *c : level0->coherence_set) {
-                        shared = c->coherence_request(memref, false);
-                    }
+            //top level cache so run coherence
+            COHERENCE_STATE coherence_state = COHERENCE_STATE::M;
+            if (use_coherence && processor_cache) {
+                bool shared = false;
+                for (cache *c : coherence_set) {
+                    bool s = c->coherence_request(memref);
+                    shared =  s || shared;
                 }
-            }
-            //put line in cache if not exclusive
-            if (!exclusive) {
-                COHERENCE_STATE coherence_state;
+                //put line in cache if not exclusive
+
                 if (memref.ref_type == WRITE) {
                     coherence_state = COHERENCE_STATE::M;
                 } else if (shared) {
@@ -192,14 +172,20 @@ bool cache::request(const mem_ref_t &mem_ref_in, cache* level0) {
                 } else {
                     coherence_state = COHERENCE_STATE::E;
                 }
+            }
+            if (!exclusive) {
                 replace_line(tag, coherence_state);
+            }
+            if(has_parent()) {
+                parent->request(memref);
             }
         }
 
         if (tag + 1 <= final_tag) {
             uint64_t next_addr = (tag + 1) << line_size_bits;
             memref.addr = next_addr;
-            memref.size = final_addr - next_addr + 1 /*undo the -1*/;
+            /*undo the -1*/
+            memref.size = final_addr - next_addr + 1;
         }
     }
     if(memref.ref_type == WRITE) {
@@ -207,7 +193,6 @@ bool cache::request(const mem_ref_t &mem_ref_in, cache* level0) {
     } else {
         reads += count;
     }
-    return shared;
 }
 
 
@@ -250,7 +235,6 @@ void cache::replace_line(uint64_t tag, COHERENCE_STATE coherence_state) {
     int lru_way = replacementPolicy->get_replacement_line(this, set_idx);
     int lru_line = get_line_idx(set_idx, lru_way);
     uint64_t replaced_tag = lines[lru_line]->tag;
-    COHERENCE_STATE replaced_coherence_state = lines[lru_line]->coherence_state;
     if(replaced_tag != TAG_INVALID) {
         if (inclusive) {
             for (cache *child : children) {
@@ -269,7 +253,7 @@ void cache::replace_line(uint64_t tag, COHERENCE_STATE coherence_state) {
             if (parent->exclusive) {
                 //if exclusive put evicted line in parent cache
                 //TODO: assuming line size is the same
-                parent->replace_line(replaced_tag, replaced_coherence_state);
+                parent->replace_line(replaced_tag, coherence_state);
             }
         }
     }
@@ -284,10 +268,6 @@ int cache::get_associativity() {
 
 void cache::add_to_coherence_set(cache *c) {
     coherence_set.push_back(c);
-}
-
-void cache::add_parent(cache *c) {
-    parents.push_back(c);
 }
 
 int cache::get_coherence_invalidates() {
