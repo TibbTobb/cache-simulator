@@ -14,12 +14,6 @@
 #include <unistd.h>
 #include "../common/memref.h"
 
-#ifdef DEBUG
-#define D if(1)
-#else
-#define D if(0)
-#endif
-
 typedef struct {
     thread_id_t thread_id;
 } per_thread_t;
@@ -31,7 +25,7 @@ static int fd;
 static FILE *file;
 
 static void create_mem_ref(uint write, unsigned short size) {
-    #D dr_printf("create_mem_ref\n");
+
 
     void *drcontext = dr_get_current_drcontext();
 
@@ -45,14 +39,14 @@ static void create_mem_ref(uint write, unsigned short size) {
 
     if(online) {
         mem_ref_t mem_ref = {write ? WRITE: READ, size, addr, thread_id};
-    #D dr_printf("writing to pipe\n");
+
         ::write(fd, &mem_ref, sizeof(mem_ref));
-    #D dr_printf("finished writing\n");
+
     } else {
         //write mem_ref to per thread file
-        #D ("writing to file\n");
+
         fprintf(file, "%lu %hu %i %i\n", addr, size, write, thread_id);
-        #D dr_printf("finished writing\n");
+
     }
 }
 
@@ -98,7 +92,7 @@ static dr_emit_flags_t event_bb_app2app(void *drcontext, void *tag, instrlist_t 
 
 static dr_emit_flags_t event_app_instruction(void *drcontext, void *tag, instrlist_t *bb, instr_t *instr, bool for_trace,
         bool translating, void *user_data) {
-        #D dr_printf("trace instruction\n");
+
         if(instr_reads_memory(instr) || instr_writes_memory(instr)) {
             //for each source mem ref
             for(int i=0; i < instr_num_srcs(instr); i++) {
@@ -117,7 +111,7 @@ static dr_emit_flags_t event_app_instruction(void *drcontext, void *tag, instrli
 }
 
 static void event_exit() {
-    #D dr_printf("%i", memref_total);
+
     dr_printf("finished tracing\n");
 
     if(!drmgr_unregister_bb_app2app_event(event_bb_app2app) ||
@@ -138,20 +132,20 @@ static void event_exit() {
 
 static void event_thread_init(void *drcontext) {
     thread_id_t thread_id = dr_get_thread_id(drcontext);
-    #D dr_printf("initialising thread: %i\n", thread_id);
+
     if(online) {
         mem_ref_t mem_ref = {THREAD_INIT, 0, 0, thread_id};
-        #D dr_printf("writing to pipe\n");
+
         ::write(fd, &mem_ref, sizeof(mem_ref));
-        #D dr_printf("finished writing\n");
+
     } else {
         //write mem_ref to per thread file
-        #D dr_printf("writing to file\n");
+
         fprintf(file, "%lu %hu %i %i\n", 0L, 0, THREAD_INIT, thread_id);
-        #D dr_printf("finished writing\n");
+
     }
 
-    #D dr_printf("thread init\n");
+
     //open file for thread to write to
     per_thread_t *data = static_cast<per_thread_t *>(dr_thread_alloc(drcontext, sizeof(per_thread_t)));
     DR_ASSERT(data != nullptr);
@@ -165,17 +159,17 @@ static void event_thread_exit(void *drcontext) {
     per_thread_t *data;
     data = static_cast<per_thread_t *>(drmgr_get_tls_field(drcontext, tls_idx));
     thread_id_t thread_id = data->thread_id;
-    #D dr_printf("exit thread: %i\n", thread_id);
+
     if(online) {
         mem_ref_t mem_ref = {THREAD_EXIT, 0, 0, thread_id};
-        #D dr_printf("writing to pipe\n");
+
         ::write(fd, &mem_ref, sizeof(mem_ref));
-        #D dr_printf("finished writing\n");
+
     } else {
         //write mem_ref to per thread file
-        #D dr_printf("writing to file\n");
+
         fprintf(file, "%lu %hu %i %i\n", 0, 0, THREAD_EXIT, thread_id);
-        #D dr_printf("inished writing\n");
+
     }
     //free per thread data
     dr_thread_free(drcontext, data, sizeof(per_thread_t));

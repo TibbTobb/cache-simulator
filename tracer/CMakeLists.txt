@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-SET(DynamoRIO_DIR "/home/dynamoRIO/cmake")
+SET(DynamoRIO_DIR "/home/toby/dynamoRIO/cmake")
 set(CMAKE_CXX_FLAGS "-D_FILE_OFFSET_BITS=64")
 add_library(myclient SHARED tracer-multicore.cpp)
 find_package(DynamoRIO)
